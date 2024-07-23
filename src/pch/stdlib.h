@@ -19,5 +19,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <limits>
 
 #endif// HEADER_STDLIB_H

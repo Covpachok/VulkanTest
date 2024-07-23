@@ -1,10 +1,9 @@
 #ifndef HEADER_MAIN_H
 #define HEADER_MAIN_H
 
-#include "vulkan/vulkan_core.h"
-#define GLFW_INCLUDE_VULKAN
 #include "definitions.h"
 
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 
@@ -30,7 +29,13 @@ private:
 
 	bool CreateLogicalDevice();
 
-    bool CreateSurface();
+	bool CreateSurface();
+
+	bool CreateSwapChain();
+
+	bool CreateImageViews();
+
+    bool CreateGraphicsPipeline();
 
 	void MainLoop();
 
@@ -46,6 +51,13 @@ private:
 	VkQueue                  mPresentQueue;
 	VkDebugUtilsMessengerEXT mDebugMessenger;
 	VkSurfaceKHR             mSurface;
+
+	VkSwapchainKHR       mSwapChain;
+	std::vector<VkImage> mSwapChainImages;
+	VkFormat             mSwapChainImageFormat;
+	VkExtent2D           mSwapChainExtent;
+
+	std::vector<VkImageView> mSwapChainImageViews;
 };
 
 
