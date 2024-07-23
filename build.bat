@@ -35,5 +35,7 @@ if "%RUN_PROGRAM%"=="true" (
     cmake --build ./%BUILD_DIR%/ 
 )
 
+echo %ERRORLEVEL%
+
 endlocal
 

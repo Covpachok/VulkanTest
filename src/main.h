@@ -30,6 +30,8 @@ private:
 
 	bool CreateLogicalDevice();
 
+    bool CreateSurface();
+
 	void MainLoop();
 
 	void Cleanup();
@@ -41,7 +43,9 @@ private:
 	VkPhysicalDevice         mPhysicalDevice;
 	VkDevice                 mDevice;
 	VkQueue                  mGraphicsQueue;
+	VkQueue                  mPresentQueue;
 	VkDebugUtilsMessengerEXT mDebugMessenger;
+	VkSurfaceKHR             mSurface;
 };
 
 
