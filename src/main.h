@@ -35,7 +35,9 @@ private:
 
 	bool CreateImageViews();
 
-    bool CreateGraphicsPipeline();
+	bool CreateGraphicsPipeline();
+
+	bool CreateRenderPass();
 
 	void MainLoop();
 
@@ -58,6 +60,9 @@ private:
 	VkExtent2D           mSwapChainExtent;
 
 	std::vector<VkImageView> mSwapChainImageViews;
+
+	VkRenderPass     mRenderPass;
+	VkPipelineLayout mPipelineLayout;
 };
 
 

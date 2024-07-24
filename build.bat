@@ -1,11 +1,10 @@
 @echo off
 setlocal
 
-rem Initialize variables
 set BUILD_TYPE=Debug
 set RUN_PROGRAM=false
+set PROGRAM_NAME=Vulkan
 
-rem Check parameters
 :process_params
 if "%~1"=="" goto done_params
 if /I "%~1"=="-Debug" set BUILD_TYPE=Debug
@@ -16,26 +15,45 @@ goto process_params
 
 :done_params
 
-rem Set directories based on build type
 if /I "%BUILD_TYPE%"=="Debug" (
     set BUILD_DIR=build_debug
 ) else if /I "%BUILD_TYPE%"=="Release" (
     set BUILD_DIR=build_release
 )
 
+
+echo:
 call py update_source_files.py
+echo:
 
-rem Run cmake commands
+echo:
+call compile_shaders.bat -%BUILD_TYPE%
+echo:
+
+echo:
 cmake -G Ninja -B./%BUILD_DIR%/ -S. -DCMAKE_BUILD_TYPE=%BUILD_TYPE% -D CMAKE_CXX_COMPILER=clang++ CMAKE_C_COMPILER=clang
+echo:
 
-rem Run the .exe file if -Run parameter is specified
 if "%RUN_PROGRAM%"=="true" (
-    cmake --build ./%BUILD_DIR%/ && .\%BUILD_DIR%\Vulkan.exe
+    echo:
+    cmake --build ./%BUILD_DIR%/ 
+
+    if ERRORLEVEL 1 (
+        exit /b %ERRORLEVEL%
+    )
+    echo:
+
+    echo:
+    set PREV_DIR=%cd%
+    cd %BUILD_DIR%
+    .\%PROGRAM_NAME%.exe 
+    cd %PREV_DIR%
+    echo Program exited with code: %ERRORLEVEL%
+
 ) else (
+    echo:
     cmake --build ./%BUILD_DIR%/ 
 )
-
-echo %ERRORLEVEL%
 
 endlocal
 
