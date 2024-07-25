@@ -9,6 +9,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 //
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -415,22 +416,22 @@ VkExtent2D ChooseSwapExtent(GLFWwindow *window, const VkSurfaceCapabilitiesKHR &
 	return actualExtent;
 }
 
-bool CreateShaderModule(
-		VkDevice device, const std::vector<char> &code, VkShaderModule *outShaderModule
-)
+std::optional<VkShaderModule> CreateShaderModule(VkDevice device, const std::vector<char> &code)
 {
 	VkShaderModuleCreateInfo createInfo = {};
-	createInfo.sType                    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize                 = code.size();
-	createInfo.pCode                    = reinterpret_cast<const u32 *>(code.data());
 
-	if (vkCreateShaderModule(device, &createInfo, nullptr, outShaderModule) != VK_SUCCESS)
+	createInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = code.size();
+	createInfo.pCode    = reinterpret_cast<const u32 *>(code.data());
+
+	VkShaderModule shaderModule;
+	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
 	{
 		CLOG_ERR("Failed to create shader module.");
-		return EXIT_FAILURE;
+		return std::nullopt;
 	}
 
-	return EXIT_SUCCESS;
+	return shaderModule;
 }
 
 /**************************************
@@ -816,32 +817,37 @@ bool Application::CreateGraphicsPipeline()
 	auto vertShaderCode = ReadFile("shaders/shader_vert.spv");
 	auto fragShaderCode = ReadFile("shaders/shader_frag.spv");
 
-	VkShaderModule vertShaderModule = {};
-	if (CreateShaderModule(mDevice, vertShaderCode, &vertShaderModule) == EXIT_FAILURE)
+	VkShaderModule vertShaderModule;
 	{
-		return EXIT_FAILURE;
+		std::optional<VkShaderModule> handle = CreateShaderModule(mDevice, vertShaderCode);
+		if (!handle.has_value())
+		{
+			return EXIT_FAILURE;
+		}
+        vertShaderModule = handle.value();
 	}
 
-	VkShaderModule fragShaderModule = {};
-	if (CreateShaderModule(mDevice, fragShaderCode, &fragShaderModule) == EXIT_FAILURE)
+	VkShaderModule fragShaderModule;
 	{
-		return EXIT_FAILURE;
+		std::optional<VkShaderModule> handle = CreateShaderModule(mDevice, fragShaderCode);
+		if (!handle.has_value())
+		{
+			return EXIT_FAILURE;
+		}
+        fragShaderModule = handle.value();
 	}
 
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
-	VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
-
-	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-
-	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-
+	vertShaderStageInfo.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageInfo.stage  = VK_SHADER_STAGE_VERTEX_BIT;
 	vertShaderStageInfo.module = vertShaderModule;
-	fragShaderStageInfo.module = fragShaderModule;
+	vertShaderStageInfo.pName  = "main";
 
-	vertShaderStageInfo.pName = "main";
-	fragShaderStageInfo.pName = "main";
+	VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
+	fragShaderStageInfo.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragShaderStageInfo.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageInfo.module = fragShaderModule;
+	fragShaderStageInfo.pName  = "main";
 
 	VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
@@ -962,8 +968,36 @@ bool Application::CreateGraphicsPipeline()
 	}
 
 
+	VkGraphicsPipelineCreateInfo pipelineInfo = {};
+	pipelineInfo.sType                        = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineInfo.stageCount                   = 2;
+	pipelineInfo.pStages                      = shaderStages;
+
+	pipelineInfo.pVertexInputState   = &vertexInputInfo;
+	pipelineInfo.pInputAssemblyState = &inputAssembly;
+	pipelineInfo.pViewportState      = &viewportState;
+	pipelineInfo.pRasterizationState = &rasterizer;
+	pipelineInfo.pMultisampleState   = &multisampling;
+	pipelineInfo.pDepthStencilState  = nullptr;
+	pipelineInfo.pColorBlendState    = &colorBlending;
+	pipelineInfo.pDynamicState       = &dynamicState;
+
+	pipelineInfo.layout             = mPipelineLayout;
+	pipelineInfo.renderPass         = mRenderPass;
+	pipelineInfo.subpass            = 0;
+	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineInfo.basePipelineIndex  = -1;
+
+	if (vkCreateGraphicsPipelines(
+				mDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &mGraphicsPipeline
+		)
+		!= VK_SUCCESS)
+	{
+		return EXIT_FAILURE;
+	}
+
 	vkDestroyShaderModule(mDevice, vertShaderModule, nullptr);
-	vkDestroyShaderModule(mDevice, vertShaderModule, nullptr);
+	vkDestroyShaderModule(mDevice, fragShaderModule, nullptr);
 
 	return EXIT_SUCCESS;
 }
@@ -980,32 +1014,32 @@ bool Application::CreateRenderPass()
 	colorAttachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	colorAttachment.finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 
-    VkAttachmentReference colorAttachmentRef = {};
-    colorAttachmentRef.attachment = 0;
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	VkAttachmentReference colorAttachmentRef = {};
+	colorAttachmentRef.attachment            = 0;
+	colorAttachmentRef.layout                = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 
-    VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorAttachmentRef;
+	VkSubpassDescription subpass = {};
+	subpass.pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments    = &colorAttachmentRef;
 
 
-    VkRenderPassCreateInfo renderPassInfo = {};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
+	VkRenderPassCreateInfo renderPassInfo = {};
+	renderPassInfo.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassInfo.attachmentCount        = 1;
+	renderPassInfo.pAttachments           = &colorAttachment;
+	renderPassInfo.subpassCount           = 1;
+	renderPassInfo.pSubpasses             = &subpass;
 
-    if(vkCreateRenderPass(mDevice, &renderPassInfo, nullptr, &mRenderPass) != VK_SUCCESS)
-    {
-        return EXIT_FAILURE;
-    }
+	if (vkCreateRenderPass(mDevice, &renderPassInfo, nullptr, &mRenderPass) != VK_SUCCESS)
+	{
+		return EXIT_FAILURE;
+	}
 
 	return EXIT_SUCCESS;
 }
@@ -1022,8 +1056,9 @@ void Application::Cleanup()
 {
 	CLOG_INFO("Cleaning up...");
 
+	vkDestroyPipeline(mDevice, mGraphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(mDevice, mPipelineLayout, nullptr);
-    vkDestroyRenderPass(mDevice, mRenderPass, nullptr);
+	vkDestroyRenderPass(mDevice, mRenderPass, nullptr);
 
 	for (auto *imageView : mSwapChainImageViews)
 	{

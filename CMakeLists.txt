@@ -63,5 +63,7 @@ target_precompile_headers(
 
 target_compile_options(
     ${PROJECT_NAME}
-    PUBLIC -Wall -Wextra -Wpedantic -g -gcodeview -O0 -fno-exceptions -std=c++17
+    PUBLIC -Wall -Wextra -Wpedantic -g -gcodeview -O0
+    -fno-exceptions
+    -std=c++17
 )
