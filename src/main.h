@@ -2,6 +2,7 @@
 #define HEADER_MAIN_H
 
 #include "definitions.h"
+#include "vulkan/vulkan_core.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -39,6 +40,18 @@ private:
 
 	bool CreateRenderPass();
 
+    bool CreateFramebuffers();
+
+    bool CreateCommandPool();
+
+    bool CreateCommandBuffer();
+
+    bool RecordCommandBuffer(VkCommandBuffer commandBuffer, u32 imageIndex);
+
+    bool CreateSyncObjects();
+
+    void DrawFrame();
+
 	void MainLoop();
 
 	void Cleanup();
@@ -64,6 +77,15 @@ private:
 	VkRenderPass     mRenderPass;
 	VkPipelineLayout mPipelineLayout;
 	VkPipeline       mGraphicsPipeline;
+
+	std::vector<VkFramebuffer> mSwapChainFramebuffers;
+
+    VkCommandPool mCommandPool;
+    VkCommandBuffer mCommandBuffer;
+
+    VkSemaphore mImageAvailableSemaphore;
+    VkSemaphore mRenderFinishedSemaphore;
+    VkFence mInFlightFence;
 };
 
 
