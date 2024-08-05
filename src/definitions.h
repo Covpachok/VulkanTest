@@ -29,8 +29,6 @@ static_assert(sizeof(u64) == 8, "Size of u64 is not 8 bytes.");
 static_assert(sizeof(f32) == 4, "Size of f32 is not 4 bytes.");
 static_assert(sizeof(f64) == 8, "Size of f64 is not 8 bytes.");
 
-#define COV_ASSERT(expr, msg) assert(( (void)(msg), (expr) ))
-
 #define COV_API __declspec(dllexport)
 
 #endif// HEADER_DEFINITIONS_H

@@ -19,6 +19,8 @@ public:
 private:
 	bool InitWindow();
 
+    static void FramebufferResizeCallback(GLFWwindow* window, int width, int height);
+
 	bool InitVulkan();
 
 	bool CreateInstance();
@@ -48,6 +50,10 @@ private:
 	bool RecordCommandBuffer(VkCommandBuffer commandBuffer, u32 imageIndex);
 
 	bool CreateSyncObjects();
+
+	bool RecreateSwapChain();
+
+	void CleanupSwapchain();
 
 	void DrawFrame();
 
@@ -79,14 +85,16 @@ private:
 
 	std::vector<VkFramebuffer> mSwapChainFramebuffers;
 
-	VkCommandPool   mCommandPool;
-    std::vector<VkCommandBuffer> mCommandBuffers;
+	VkCommandPool                mCommandPool;
+	std::vector<VkCommandBuffer> mCommandBuffers;
 
 	std::vector<VkSemaphore> mImageAvailableSemaphores;
 	std::vector<VkSemaphore> mRenderFinishedSemaphores;
 	std::vector<VkFence>     mInFlightFences;
 
-    u32 mCurrentFrame = 0;
+	bool mFramebufferResized = false;
+
+	u32 mCurrentFrame = 0;
 };
 
 

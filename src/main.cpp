@@ -1,8 +1,14 @@
 #include "main.h"
 
+#include "GLFW/glfw3.h"
+#include "definitions.h"
 #include "pch/glm.h"
 #include "pch/stdlib.h"
 #include "utils/logger.h"
+#include "vulkan/vulkan_core.h"
+
+#include <cstdint>
+#include <cstdlib>
 
 /**************************************
 *       CONST DATA            
@@ -461,7 +467,7 @@ bool Application::InitWindow()
 	}
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
 	mWindow = glfwCreateWindow(kWindowWidth, kWindowHeight, "VulkanTest", nullptr, nullptr);
 	if (!mWindow)
@@ -470,8 +476,20 @@ bool Application::InitWindow()
 		return EXIT_FAILURE;
 	}
 
+	glfwSetWindowUserPointer(mWindow, this);
+	glfwSetFramebufferSizeCallback(mWindow, FramebufferResizeCallback);
+
 	CLOG_INFO("Window initialized successfully.");
 	return EXIT_SUCCESS;
+}
+
+void Application::FramebufferResizeCallback(GLFWwindow *window, int width, int height)
+{
+	void        *userPtr = glfwGetWindowUserPointer(window);
+	Application *app     = reinterpret_cast<Application *>(userPtr);
+	COV_ASSERT(app != nullptr, "WindowUserPointer is not an Application class pointer.");
+;
+	app->mFramebufferResized = true;
 }
 
 bool Application::InitVulkan()
@@ -1233,15 +1251,78 @@ bool Application::CreateSyncObjects()
 	return EXIT_SUCCESS;
 }
 
+bool Application::RecreateSwapChain()
+{
+    i32 width = 0, height = 0;
+    glfwGetFramebufferSize(mWindow, &width, &height);
+    while(width == 0 || height == 0)
+    {
+        glfwGetFramebufferSize(mWindow, &width, &height);
+        glfwWaitEvents();
+    }
+
+	vkDeviceWaitIdle(mDevice);
+
+	CleanupSwapchain();
+
+	if (CreateSwapChain() != EXIT_SUCCESS)
+	{
+		return EXIT_FAILURE;
+	}
+
+	if (CreateImageViews() != EXIT_SUCCESS)
+	{
+		return EXIT_FAILURE;
+	}
+
+	if (CreateFramebuffers() != EXIT_SUCCESS)
+	{
+		return EXIT_FAILURE;
+	}
+
+	return EXIT_SUCCESS;
+}
+
+void Application::CleanupSwapchain()
+{
+	for (VkFramebuffer framebuffer : mSwapChainFramebuffers)
+	{
+		vkDestroyFramebuffer(mDevice, framebuffer, nullptr);
+	}
+
+	for (auto *imageView : mSwapChainImageViews)
+	{
+		vkDestroyImageView(mDevice, imageView, nullptr);
+	}
+
+	vkDestroySwapchainKHR(mDevice, mSwapChain, nullptr);
+}
+
 void Application::DrawFrame()
 {
 	vkWaitForFences(mDevice, 1, &mInFlightFences[mCurrentFrame], VK_TRUE, UINT64_MAX);
-	vkResetFences(mDevice, 1, &mInFlightFences[mCurrentFrame]);
 
-	u32 imageIndex = 0;
-	vkAcquireNextImageKHR(
-			mDevice, mSwapChain, UINT64_MAX, mImageAvailableSemaphores[mCurrentFrame], VK_NULL_HANDLE, &imageIndex
-	);
+	u32      imageIndex = 0;
+	VkResult result     = vkAcquireNextImageKHR(
+            mDevice,
+            mSwapChain,
+            UINT64_MAX,
+            mImageAvailableSemaphores[mCurrentFrame],
+            VK_NULL_HANDLE,
+            &imageIndex
+    );
+
+	if (result == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		RecreateSwapChain();
+		return;
+	}
+	if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+	{
+		COV_ASSERT(0, "Failed to acquire swap chain image");
+	}
+
+	vkResetFences(mDevice, 1, &mInFlightFences[mCurrentFrame]);
 
 	vkResetCommandBuffer(mCommandBuffers[mCurrentFrame], 0);
 	RecordCommandBuffer(mCommandBuffers[mCurrentFrame], imageIndex);
@@ -1264,8 +1345,7 @@ void Application::DrawFrame()
 
 	if (vkQueueSubmit(mGraphicsQueue, 1, &submitInfo, mInFlightFences[mCurrentFrame]))
 	{
-		CLOG_ERR("Failed to submit draw command buffer.");
-		assert(0);
+		COV_ASSERT(0, "Failed to submit draw command buffer.");
 	}
 
 	VkPresentInfoKHR presentInfo = {};
@@ -1273,6 +1353,7 @@ void Application::DrawFrame()
 
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pWaitSemaphores    = signalSemaphores;
+
 
 	VkSwapchainKHR swapChains[] = {mSwapChain};
 
@@ -1282,9 +1363,18 @@ void Application::DrawFrame()
 
 	presentInfo.pResults = nullptr;
 
-	vkQueuePresentKHR(mPresentQueue, &presentInfo);
+	result = vkQueuePresentKHR(mPresentQueue, &presentInfo);
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || mFramebufferResized)
+	{
+		mFramebufferResized = false;
+		RecreateSwapChain();
+	}
+	else if (result != VK_SUCCESS)
+	{
+		COV_ASSERT(0, "Failed to present swap chain image.");
+	}
 
-    mCurrentFrame = (mCurrentFrame + 1) % kMaxFramesInFlight;
+	mCurrentFrame = (mCurrentFrame + 1) % kMaxFramesInFlight;
 }
 
 void Application::MainLoop()
@@ -1302,6 +1392,12 @@ void Application::Cleanup()
 {
 	CLOG_INFO("Cleaning up...");
 
+	CleanupSwapchain();
+
+	vkDestroyPipeline(mDevice, mGraphicsPipeline, nullptr);
+	vkDestroyPipelineLayout(mDevice, mPipelineLayout, nullptr);
+	vkDestroyRenderPass(mDevice, mRenderPass, nullptr);
+
 	for (u32 i = 0; i < kMaxFramesInFlight; ++i)
 	{
 		vkDestroySemaphore(mDevice, mImageAvailableSemaphores[i], nullptr);
@@ -1310,22 +1406,6 @@ void Application::Cleanup()
 	}
 
 	vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
-
-	for (VkFramebuffer framebuffer : mSwapChainFramebuffers)
-	{
-		vkDestroyFramebuffer(mDevice, framebuffer, nullptr);
-	}
-
-	vkDestroyPipeline(mDevice, mGraphicsPipeline, nullptr);
-	vkDestroyPipelineLayout(mDevice, mPipelineLayout, nullptr);
-	vkDestroyRenderPass(mDevice, mRenderPass, nullptr);
-
-	for (auto *imageView : mSwapChainImageViews)
-	{
-		vkDestroyImageView(mDevice, imageView, nullptr);
-	}
-
-	vkDestroySwapchainKHR(mDevice, mSwapChain, nullptr);
 
 	vkDestroyDevice(mDevice, nullptr);
 

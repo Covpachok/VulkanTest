@@ -5,19 +5,19 @@
 
 namespace Covlog
 {
-	enum Type
-	{
-		eError,
-		eWarning,
-		eDebug,
-		eInfo,
-		eCount
-	};
+enum Type
+{
+	eError,
+	eWarning,
+	eDebug,
+	eInfo,
+	eCount
+};
 
-	void LogMessage(Type type, const char *fileName, int lineNumber, const char *message);
+void LogMessage(Type type, const char *fileName, int lineNumber, const char *message);
 
-	template<typename... Args>
-	void Log(Covlog::Type type, const char *fileName, int lineNumber, Args &&...args);
+template<typename... Args>
+void Log(Covlog::Type type, const char *fileName, int lineNumber, Args &&...args);
 }// namespace Covlog
 
 template<typename... Args>
@@ -40,5 +40,14 @@ void Covlog::Log(Covlog::Type type, const char *fileName, int lineNumber, Args &
 #define CLOG_DEBUG(...) CLOG(Covlog::eDebug, __VA_ARGS__)
 #define CLOG_INFO(...) CLOG(Covlog::eInfo, __VA_ARGS__)
 
+#define COV_ASSERT(expr, msg)          \
+	if (expr)                          \
+	{                                  \
+	}                                  \
+	else                               \
+	{                                  \
+		CLOG_ERR((msg));               \
+		assert(((void)(msg), (expr))); \
+	}
 
 #endif//OGL_0_LOGGER_HPP
