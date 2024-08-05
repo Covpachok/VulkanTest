@@ -4,7 +4,6 @@
 #include "definitions.h"
 #include "vulkan/vulkan_core.h"
 
-#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 
@@ -40,17 +39,17 @@ private:
 
 	bool CreateRenderPass();
 
-    bool CreateFramebuffers();
+	bool CreateFramebuffers();
 
-    bool CreateCommandPool();
+	bool CreateCommandPool();
 
-    bool CreateCommandBuffer();
+	bool CreateCommandBuffers();
 
-    bool RecordCommandBuffer(VkCommandBuffer commandBuffer, u32 imageIndex);
+	bool RecordCommandBuffer(VkCommandBuffer commandBuffer, u32 imageIndex);
 
-    bool CreateSyncObjects();
+	bool CreateSyncObjects();
 
-    void DrawFrame();
+	void DrawFrame();
 
 	void MainLoop();
 
@@ -80,12 +79,14 @@ private:
 
 	std::vector<VkFramebuffer> mSwapChainFramebuffers;
 
-    VkCommandPool mCommandPool;
-    VkCommandBuffer mCommandBuffer;
+	VkCommandPool   mCommandPool;
+    std::vector<VkCommandBuffer> mCommandBuffers;
 
-    VkSemaphore mImageAvailableSemaphore;
-    VkSemaphore mRenderFinishedSemaphore;
-    VkFence mInFlightFence;
+	std::vector<VkSemaphore> mImageAvailableSemaphores;
+	std::vector<VkSemaphore> mRenderFinishedSemaphores;
+	std::vector<VkFence>     mInFlightFences;
+
+    u32 mCurrentFrame = 0;
 };
 
 

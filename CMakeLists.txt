@@ -51,9 +51,17 @@ add_executable(
     ${PROJECT_SOURCE_FILES}
 )
 
+# WILL INCREASE COMPILE TIMES
+add_compile_options(-fsanitize=address,undefined)
+add_link_options(-fsanitize=address,undefined)
+
 target_link_libraries(
     ${PROJECT_NAME}
-    PRIVATE ${GLFW_STATIC_LIBRARY} ${Vulkan_LIBRARIES} -fuse-ld=lld -Wl,/debug,/pdb:${PROJECT_NAME}.pdb
+    PRIVATE
+        ${GLFW_STATIC_LIBRARY}
+        ${Vulkan_LIBRARIES}
+        -fuse-ld=lld
+        -Wl,/debug,/pdb:${PROJECT_NAME}.pdb
 )
 
 target_precompile_headers(
@@ -63,7 +71,14 @@ target_precompile_headers(
 
 target_compile_options(
     ${PROJECT_NAME}
-    PUBLIC -Wall -Wextra -Wpedantic -g -gcodeview -O0
-    -fno-exceptions
-    -std=c++17
+    PUBLIC
+        -g
+        -gcodeview
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -O0
+        -fno-exceptions
+        -std=c++17
 )

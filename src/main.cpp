@@ -3,16 +3,6 @@
 #include "pch/glm.h"
 #include "pch/stdlib.h"
 #include "utils/logger.h"
-#include "vulkan/vulkan_core.h"
-//
-#include <cstdlib>
-#include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <optional>
-//
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
 
 /**************************************
 *       CONST DATA            
@@ -25,6 +15,8 @@ constexpr std::array<const char *, 1> kValidationLayers = {
 constexpr std::array<const char *, 1> kDeviceExtensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
+
+constexpr i32 kMaxFramesInFlight = 2;
 
 #if NDEBUG
 constexpr bool kEnableValidationLayers = false;
@@ -279,7 +271,7 @@ QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
 		}
 
 		VkBool32 presentSupport = false;
-		vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+		vkGetPhysicalDeviceSurfaceSupportKHR(device, (u32)i, surface, &presentSupport);
 
 		if (presentSupport)
 		{
@@ -550,7 +542,7 @@ bool Application::InitVulkan()
 		return EXIT_FAILURE;
 	}
 
-	if (CreateCommandBuffer() == EXIT_FAILURE)
+	if (CreateCommandBuffers() == EXIT_FAILURE)
 	{
 		CLOG_ERR("CreateCommandBuffer failed.");
 		return EXIT_FAILURE;
@@ -588,13 +580,13 @@ bool Application::CreateInstance()
 
 	std::vector<const char *> glfwExtensions = GetRequiredExtensions();
 
-	if (CheckExtensionsSupport(glfwExtensions.size(), glfwExtensions.data()) == EXIT_FAILURE)
+	if (CheckExtensionsSupport((u32)glfwExtensions.size(), glfwExtensions.data()) == EXIT_FAILURE)
 	{
 		CLOG_ERR("Not all extensions are included.");
 		return EXIT_FAILURE;
 	}
 
-	createInfo.enabledExtensionCount   = glfwExtensions.size();
+	createInfo.enabledExtensionCount   = (u32)glfwExtensions.size();
 	createInfo.ppEnabledExtensionNames = glfwExtensions.data();
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
@@ -609,6 +601,9 @@ bool Application::CreateInstance()
 	else
 	{
 		createInfo.enabledLayerCount = 0;
+
+		createInfo.ppEnabledLayerNames = nullptr;
+		createInfo.pNext               = nullptr;
 	}
 
 
@@ -698,7 +693,7 @@ bool Application::CreateLogicalDevice()
 	VkDeviceCreateInfo createInfo   = {};
 	createInfo.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	createInfo.pQueueCreateInfos    = queueCreateInfos.data();
-	createInfo.queueCreateInfoCount = queueCreateInfos.size();
+	createInfo.queueCreateInfoCount = (u32)queueCreateInfos.size();
 
 	createInfo.pEnabledFeatures = &deviceFeatures;
 
@@ -912,7 +907,7 @@ bool Application::CreateGraphicsPipeline()
 
 	VkPipelineDynamicStateCreateInfo dynamicState = {};
 	dynamicState.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-	dynamicState.dynamicStateCount = dynamicStates.size();
+	dynamicState.dynamicStateCount = (u32)dynamicStates.size();
 	dynamicState.pDynamicStates    = dynamicStates.data();
 
 
@@ -1060,18 +1055,18 @@ bool Application::CreateRenderPass()
 	renderPassInfo.subpassCount           = 1;
 	renderPassInfo.pSubpasses             = &subpass;
 
-    VkSubpassDependency dependency = {};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
+	VkSubpassDependency dependency = {};
+	dependency.srcSubpass          = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass          = 0;
 
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.srcAccessMask = 0;
+	dependency.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.srcAccessMask = 0;
 
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependency.dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-    renderPassInfo.dependencyCount = 1;
-    renderPassInfo.pDependencies = &dependency;
+	renderPassInfo.dependencyCount = 1;
+	renderPassInfo.pDependencies   = &dependency;
 
 	if (vkCreateRenderPass(mDevice, &renderPassInfo, nullptr, &mRenderPass) != VK_SUCCESS)
 	{
@@ -1125,16 +1120,18 @@ bool Application::CreateCommandPool()
 	return EXIT_SUCCESS;
 }
 
-bool Application::CreateCommandBuffer()
+bool Application::CreateCommandBuffers()
 {
+	mCommandBuffers.resize(kMaxFramesInFlight);
+
 	VkCommandBufferAllocateInfo allocInfo = {};
 
 	allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocInfo.commandPool        = mCommandPool;
 	allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfo.commandBufferCount = 1;
+	allocInfo.commandBufferCount = (u32)mCommandBuffers.size();
 
-	if (vkAllocateCommandBuffers(mDevice, &allocInfo, &mCommandBuffer) != VK_SUCCESS)
+	if (vkAllocateCommandBuffers(mDevice, &allocInfo, mCommandBuffers.data()) != VK_SUCCESS)
 	{
 		return EXIT_FAILURE;
 	}
@@ -1202,6 +1199,10 @@ bool Application::RecordCommandBuffer(VkCommandBuffer commandBuffer, u32 imageIn
 
 bool Application::CreateSyncObjects()
 {
+	mImageAvailableSemaphores.resize(kMaxFramesInFlight);
+	mRenderFinishedSemaphores.resize(kMaxFramesInFlight);
+	mInFlightFences.resize(kMaxFramesInFlight);
+
 	VkSemaphoreCreateInfo semaphoreInfo = {};
 	semaphoreInfo.sType                 = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -1209,21 +1210,24 @@ bool Application::CreateSyncObjects()
 	fenceInfo.sType             = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.flags             = VK_FENCE_CREATE_SIGNALED_BIT;
 
-	if (vkCreateSemaphore(mDevice, &semaphoreInfo, nullptr, &mImageAvailableSemaphore)
-		!= VK_SUCCESS)
+	for (u32 i = 0; i < kMaxFramesInFlight; ++i)
 	{
-		return EXIT_FAILURE;
-	}
+		if (vkCreateSemaphore(mDevice, &semaphoreInfo, nullptr, &mImageAvailableSemaphores[i])
+			!= VK_SUCCESS)
+		{
+			return EXIT_FAILURE;
+		}
 
-	if (vkCreateSemaphore(mDevice, &semaphoreInfo, nullptr, &mRenderFinishedSemaphore)
-		!= VK_SUCCESS)
-	{
-		return EXIT_FAILURE;
-	}
+		if (vkCreateSemaphore(mDevice, &semaphoreInfo, nullptr, &mRenderFinishedSemaphores[i])
+			!= VK_SUCCESS)
+		{
+			return EXIT_FAILURE;
+		}
 
-	if (vkCreateFence(mDevice, &fenceInfo, nullptr, &mInFlightFence) != VK_SUCCESS)
-	{
-		return EXIT_FAILURE;
+		if (vkCreateFence(mDevice, &fenceInfo, nullptr, &mInFlightFences[i]) != VK_SUCCESS)
+		{
+			return EXIT_FAILURE;
+		}
 	}
 
 	return EXIT_SUCCESS;
@@ -1231,54 +1235,56 @@ bool Application::CreateSyncObjects()
 
 void Application::DrawFrame()
 {
-	vkWaitForFences(mDevice, 1, &mInFlightFence, VK_TRUE, UINT64_MAX);
-	vkResetFences(mDevice, 1, &mInFlightFence);
+	vkWaitForFences(mDevice, 1, &mInFlightFences[mCurrentFrame], VK_TRUE, UINT64_MAX);
+	vkResetFences(mDevice, 1, &mInFlightFences[mCurrentFrame]);
 
 	u32 imageIndex = 0;
 	vkAcquireNextImageKHR(
-			mDevice, mSwapChain, UINT64_MAX, mImageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex
+			mDevice, mSwapChain, UINT64_MAX, mImageAvailableSemaphores[mCurrentFrame], VK_NULL_HANDLE, &imageIndex
 	);
 
-	vkResetCommandBuffer(mCommandBuffer, 0);
-	RecordCommandBuffer(mCommandBuffer, imageIndex);
+	vkResetCommandBuffer(mCommandBuffers[mCurrentFrame], 0);
+	RecordCommandBuffer(mCommandBuffers[mCurrentFrame], imageIndex);
 
 	VkSubmitInfo submitInfo = {};
 	submitInfo.sType        = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-	VkSemaphore          waitSemaphores[] = {mImageAvailableSemaphore};
+	VkSemaphore          waitSemaphores[] = {mImageAvailableSemaphores[mCurrentFrame]};
 	VkPipelineStageFlags waitStage[]      = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores    = waitSemaphores;
 	submitInfo.pWaitDstStageMask  = waitStage;
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers    = &mCommandBuffer;
+	submitInfo.pCommandBuffers    = &mCommandBuffers[mCurrentFrame];
 
-    VkSemaphore signalSemaphores[] = {mRenderFinishedSemaphore};
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSemaphores;
+	VkSemaphore signalSemaphores[]  = {mRenderFinishedSemaphores[mCurrentFrame]};
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores    = signalSemaphores;
 
-    if(vkQueueSubmit(mGraphicsQueue, 1, &submitInfo, mInFlightFence))
-    {
-        CLOG_ERR("Failed to submit draw command buffer.");
-        assert(0);
-    }
+	if (vkQueueSubmit(mGraphicsQueue, 1, &submitInfo, mInFlightFences[mCurrentFrame]))
+	{
+		CLOG_ERR("Failed to submit draw command buffer.");
+		assert(0);
+	}
 
-    VkPresentInfoKHR presentInfo = {};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	VkPresentInfoKHR presentInfo = {};
+	presentInfo.sType            = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores    = signalSemaphores;
 
-    VkSwapchainKHR swapChains[] = {mSwapChain};
+	VkSwapchainKHR swapChains[] = {mSwapChain};
 
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = swapChains;
-    presentInfo.pImageIndices = &imageIndex;
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains    = swapChains;
+	presentInfo.pImageIndices  = &imageIndex;
 
-    presentInfo.pResults = nullptr;
+	presentInfo.pResults = nullptr;
 
-    vkQueuePresentKHR(mPresentQueue, &presentInfo);
+	vkQueuePresentKHR(mPresentQueue, &presentInfo);
+
+    mCurrentFrame = (mCurrentFrame + 1) % kMaxFramesInFlight;
 }
 
 void Application::MainLoop()
@@ -1289,16 +1295,19 @@ void Application::MainLoop()
 		DrawFrame();
 	}
 
-    vkDeviceWaitIdle(mDevice);
+	vkDeviceWaitIdle(mDevice);
 }
 
 void Application::Cleanup()
 {
 	CLOG_INFO("Cleaning up...");
 
-	vkDestroySemaphore(mDevice, mImageAvailableSemaphore, nullptr);
-	vkDestroySemaphore(mDevice, mRenderFinishedSemaphore, nullptr);
-	vkDestroyFence(mDevice, mInFlightFence, nullptr);
+	for (u32 i = 0; i < kMaxFramesInFlight; ++i)
+	{
+		vkDestroySemaphore(mDevice, mImageAvailableSemaphores[i], nullptr);
+		vkDestroySemaphore(mDevice, mRenderFinishedSemaphores[i], nullptr);
+		vkDestroyFence(mDevice, mInFlightFences[i], nullptr);
+	}
 
 	vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
 
@@ -1346,9 +1355,6 @@ int main()
 	Application app = {};
 
 	i32 exitCode = app.Run();
-
-	int *p = nullptr;
-	*p     = 10;
 
 	return exitCode;
 }
